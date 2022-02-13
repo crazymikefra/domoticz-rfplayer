@@ -58,6 +58,8 @@
 import Domoticz
 import datetime
 import json
+import os
+import time
 
 global ReqRcv
 global InfoType4SubTypes
@@ -188,6 +190,7 @@ class BasePlugin:
 		#Domoticz.Transport("Serial", Parameters["SerialPort"], Baud=115200)
 		#Domoticz.Protocol("None")  # None,XML,JSON,HTTP
 		#Domoticz.Connect()
+		CheckRFPControl();
 		SerialConn = Domoticz.Connection(Name="RfP1000", Transport="Serial", Protocol="None", Address=Parameters["SerialPort"], Baud=115200)
 		SerialConn.Connect()
 		ReqRcv=''
@@ -228,15 +231,15 @@ class BasePlugin:
 			ReqRcv+=Tmprcv
 		else : # while end of data is receive
 			ReqRcv+=Tmprcv
-			########## TODO : verifier si une trame ZIA n est pas en milieu de message (2messages collés ou perturbation+ message accoller)
-			if ReqRcv.startswith("ZIA--{"):
+			########## TODO : verifier si une trame ZIA n est pas en milieu de message (2 messages collés ou perturbation + message accollés)
+			if ReqRcv.startswith("ZIA--"):
 				#ModeLastReceive ="CONF"
-				Domoticz.Debug(ReqRcv)
+				#Domoticz.Debug(ReqRcv)
 				ReadConf(ReqRcv)
 				ReqRcv=''
 			if ReqRcv.startswith("ZIA33"):
 				#ModeLastReceive ="DATA"
-				Domoticz.Debug(ReqRcv)
+				#Domoticz.Debug(ReqRcv)
 				ReadData(ReqRcv)
 				ReqRcv=''
 			if ReqRcv.startswith("ZIA55"):
@@ -244,6 +247,37 @@ class BasePlugin:
 				#Domoticz.Log("----Mode Trace----")
 				#Domoticz.Log(ReqRcv)
 				ReadTrace(ReqRcv)
+				ReqRcv=''
+				
+			if ReqRcv.startswith("ZIA00"):
+				#ModeLastReceive ="TRACE"
+				Domoticz.Log("----Mode 00----")
+				Domoticz.Log(ReqRcv)
+				ReadZIA00(ReqRcv)
+				ReqRcv=''
+			if ReqRcv.startswith("ZIA11"):
+				#ModeLastReceive ="TRACE"
+				Domoticz.Log("----Mode 11----")
+				Domoticz.Log(ReqRcv)
+				ReadZIA11(ReqRcv)
+				ReqRcv=''
+			if ReqRcv.startswith("ZIA22"):
+				#ModeLastReceive ="TRACE"
+				Domoticz.Log("----Mode 22----")
+				Domoticz.Log(ReqRcv)
+				ReadZIA22(ReqRcv)
+				ReqRcv=''
+			if ReqRcv.startswith("ZIA44"):
+				#ModeLastReceive ="TRACE"
+				Domoticz.Log("----Mode 44----")
+				Domoticz.Log(ReqRcv)
+				ReadZIA44(ReqRcv)
+				ReqRcv=''
+			if ReqRcv.startswith("ZIA66"):
+				#ModeLastReceive ="TRACE"
+				Domoticz.Log("----Mode 66----")
+				Domoticz.Log(ReqRcv)
+				ReadZIA66(ReqRcv)
 				ReqRcv=''
 				
 			#if ReqRcv.startswith("ZIA"):
@@ -374,42 +408,58 @@ def RFpConf():
 	'''
 	lineinput='ZIA++RECEIVER + *'
 	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+	
+	lineinput='ZIA++FREQ H 868350'
+	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+	lineinput='ZIA++SELECTIVITY H 1'
+	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+	lineinput='ZIA++SENSIBILITY H 1'
+	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+	lineinput='ZIA++RFLINKTRIGGER H 4'
+	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+	lineinput='ZIA++DSPTRIGGER H 4'
+	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+	
 	#'''
 	lineinput='ZIA++FORMAT JSON'
 	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
 	if Parameters["Mode1"] != "" :
 		lineinput='ZIA++SETMAC ' + Parameters["Mode1"]
 		SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
-	lineinput='ZIA++TRACE RFLINK'
+	lineinput='ZIA++TRACE -* +RFLINK +RECEIVER'
 	#Domoticz.Log(lineinput);
 	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
 	#lineinput='ZIA++FORMAT RFLINK BINARY'
 	#Domoticz.Log(lineinput);
 	#SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
-	return
+	lineinput='ZIA++STATUS JSON'
+	SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+	#return
 	
 	
 
 def ReadConf(ReqRcv):
 	global RfPmac
+	Domoticz.Debug(ReqRcv)
 	ReqRcv=ReqRcv.replace("ZIA--", "")
 	DecData = json.loads(ReqRcv)
-	RfPmac = DecData['systemStatus']['info'][2]['v']
-	Domoticz.Log('rfp1000 mac :' + str(RfPmac))
-	return RfPmac
+	if 'systemStatus' in DecData :
+		RfPmac = DecData['systemStatus']['info'][2]['v']
+		Domoticz.Log('rfp1000 mac :' + str(RfPmac))
+	#return RfPmac
 
 def ReadData(ReqRcv):
 	##############################################################################################################
 	# decoding data from RfPlayer 
 	##############################################################################################################
 	if Parameters["Mode6"] != "0":
-		Domoticz.Log("ReadData - " + ReqRcv)
+		Domoticz.Debug("ReadData - " + ReqRcv)
 	ReqRcv=ReqRcv.replace("ZIA33", "")
 	try:
 		DecData = json.loads(ReqRcv)
 		infoType = DecData['frame']['header']['infoType']
 		if Parameters["Mode6"] != "0":
-			Domoticz.Log("infoType : " + infoType)
+			Domoticz.Debug("infoType : " + infoType)
 		##############################################################################################################
 		#####################################Frame infoType 0					ON/OFF
 		##############################################################################################################
@@ -577,246 +627,289 @@ def ReadTrace(ReqRcv):
 		for x in range(0,(int(Time) // 10)):
 			TraceFile.write(Value+"\r\n")
 	TraceFile.close()
+	os.chmod(FileName, 0o777)
 	FileName=Prefixe+"Trace_"+str(Frequency)+"_"+str(Level)+"-Signal.csv"
 	TraceFile = open(FileName,"w")
 	for IndexSample in range(len(ListeSamples)):
 		TraceFile.write(ListeSamples[IndexSample].replace(":",";")+"\r\n")
 	TraceFile.close()
-	
+	os.chmod(FileName, 0o777)
 	
 	#else:
 	#	Domoticz.Log("Trace not good : RFPlayer says:" + str(SamplesCount) + " samples ,we found:"+str(len(ListeSamples)-2)+" samples !")
 	#for IndexSample in range(len(ListeSamples)):
 	#	Domoticz.Log(ListeSamples[IndexSample])
+	
+def ReadZIA00(ReqRcv):
+	##############################################################################################################
+	# decoding trace from RfPlayer 
+	##############################################################################################################
+	Domoticz.Log("Trace - " + ReqRcv)
+	ReqRcv=ReqRcv.replace("ZIA00 ", "")
+
+def ReadZIA11(ReqRcv):
+	##############################################################################################################
+	# decoding trace from RfPlayer 
+	##############################################################################################################
+	Domoticz.Log("Trace - " + ReqRcv)
+	ReqRcv=ReqRcv.replace("ZIA11 ", "")
+
+def ReadZIA22(ReqRcv):
+	##############################################################################################################
+	# decoding trace from RfPlayer 
+	##############################################################################################################
+	Domoticz.Log("Trace - " + ReqRcv)
+	ReqRcv=ReqRcv.replace("ZIA22 ", "")
+
+def ReadZIA44(ReqRcv):
+	##############################################################################################################
+	# decoding trace from RfPlayer 
+	##############################################################################################################
+	Domoticz.Log("Trace - " + ReqRcv)
+	ReqRcv=ReqRcv.replace("ZIA44 ", "")
+
+def ReadZIA66(ReqRcv):
+	##############################################################################################################
+	# decoding trace from RfPlayer 
+	##############################################################################################################
+	Domoticz.Log("Trace - " + ReqRcv)
+	ReqRcv=ReqRcv.replace("ZIA66 ", "")
 
 def SendtoRfplayer(Unit, Command, Level, Hue):
 	bErreur = False
 	Options=Devices[Unit].Options
 	if Parameters["Mode6"] != "0":
-		Domoticz.Log("SendtoRfplayer - Call: Unit=" + str(Unit) + " , Command=" + str(Command) + " , Level=" + str(Level) + " , Hue=" + str(Hue))
-		Domoticz.Log("SendtoRfplayer - Options found in DB: " + str(Devices[Unit].Options) + " for devices unit " + str(Unit))
-		Domoticz.Log("SendtoRfplayer - Description found in DB: " + str(Devices[Unit].Description) + " for devices unit " + str(Unit))
-		Domoticz.Log("SendtoRfplayer - Switchtype found in DB: " + str(Devices[Unit].SwitchType) + " for devices unit " + str(Unit))
-	DOptions=Devices[Unit].Options
+		Domoticz.Debug("SendtoRfplayer - Call: Unit=" + str(Unit) + " , Command=" + str(Command) + " , Level=" + str(Level) + " , Hue=" + str(Hue))
+		Domoticz.Debug("SendtoRfplayer - Options found in DB: " + str(Devices[Unit].Options) + " for devices unit " + str(Unit))
+		Domoticz.Debug("SendtoRfplayer - Description found in DB: " + str(Devices[Unit].Description) + " for devices unit " + str(Unit))
+		Domoticz.Debug("SendtoRfplayer - Switchtype found in DB: " + str(Devices[Unit].SwitchType) + " for devices unit " + str(Unit))
 	
-	protocol=""
-	infoType=""
-	id=""
-	assocMode=""
-	
-	#if hasattr(Devices[Unit].Options, 'infoType'):
-	infoType = DOptions['infoType']
-	#if hasattr(Devices[Unit].Options, 'protocol'):
-	protocol=Devices[Unit].Options['protocol']
-	#if hasattr(Devices[Unit].Options, 'id'):
-	id=Devices[Unit].Options['id']
+	if Unit==255 :
+		Domoticz.Debug("Controle")
+		if Level==10:
+			lineinput='ZIA++STATUS JSON'
+			SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+	else:
+		DOptions=Devices[Unit].Options
 		
-	
-	for line in Devices[Unit].Description.splitlines():
-		if line.find("Options") != -1:
-			line=line.split(":")[1]
-			for Option in line.split(";"):
-				if Parameters["Mode6"] != "0":
-					Domoticz.Log("SendtoRfplayer - Option: " + Option)
-				NameVar=Option.split("=")[0]
-				ValVar=Option.split("=")[1]
-				if NameVar=="id":
-					id=ValVar
-				elif NameVar=="infoType":
-					infoType=ValVar
-				elif NameVar=="protocol":
-					protocol=ValVar
-				elif NameVar=="assocMode":
-					assocMode=ValVar
-	
-	if Parameters["Mode6"] != "0":				
-		Domoticz.Log("SendtoRfplayer - " + id + " | " + infoType + " | " + protocol) 
-	
-	lineinput=""
-	if bErreur == False :
-		if protocol =="1": protocol="X10"
-		if protocol =="2": 
-			frequency=Options['frequency']
-			if frequency == "433920":
-				protocol="VISONIC433"
-			if frequency == "868950":
-				protocol="VISONIC868"
-		if protocol =="3": protocol="BLYSS"
-		if protocol =="4": protocol="CHACON"
-		if protocol =="6": protocol="DOMIA"
-		if protocol =="8" and infoType == "10":
-			frequency=Options['frequency']
-			if frequency == "433920":
-				protocol="X2D433"
-			if frequency == "868950":
-				protocol="X2D868"
-		if protocol =="8" and infoType == "11":
-			protocol="X2DSHUTTER"
-		if protocol =="9": protocol="RTS"
-		if protocol =="10": protocol="KD101"
-		if protocol =="11": protocol="PARROT"
-
-		if infoType == "0" and  protocol == "PARROT":
-			#id=Options['id']
-			lineinput='ZIA++' + str(Command.upper()) + " " + protocol + " " + id
-			SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
-			if Command == "On":
-				Devices[Unit].Update(nValue =1,sValue = "on")
-			if Command == "Off":
-				Devices[Unit].Update(nValue =0,sValue = "off")
-				
-		if infoType == "0" and protocol != "PARROT":
-			#id=Options['id']
-			lineinput='ZIA++' + str(Command.upper()) + " " + protocol + " ID " + id
-			SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
-			if Command == "On":
-				Devices[Unit].Update(nValue =1,sValue = "on")
-			if Command == "Off":
-				Devices[Unit].Update(nValue =0,sValue = "off")
-				
-		if infoType == "1" or infoType == "2":
-			id=Options['id']
-			lineinput='ZIA++' + str(Command.upper()) + " " + protocol + " ID " + id
-			SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
-			if Command == "On":
-				Devices[Unit].Update(nValue =1,sValue = "on")
-			if Command == "Off":
-				Devices[Unit].Update(nValue =0,sValue = "off")
-					#Devices[Unit].Update(nValue =0,sValue = "off")
+		protocol=""
+		infoType=""
+		id=""
+		assocMode=""
+		
+		#if hasattr(Devices[Unit].Options, 'infoType'):
+		infoType = DOptions['infoType']
+		#if hasattr(Devices[Unit].Options, 'protocol'):
+		protocol=Devices[Unit].Options['protocol']
+		#if hasattr(Devices[Unit].Options, 'id'):
+		id=Devices[Unit].Options['id']
 			
-		if infoType == "3" :
-			#id=Options['id']			
-			#qualifier=""
-			#DeviceTypeSwitch: 0,
-			#DeviceTypeDoorbell: 1,
-			#DeviceTypeContact: 2,
-			#DeviceTypeBlinds: 3,
-			#DeviceTypeSmoke: 5,
-			#DeviceTypeBlindsInverted: 6,
-			#DeviceTypeDimmer: 7,
-			#DeviceTypeMotion: 8,
-			#DeviceTypePushOn: 9,
-			#DeviceTypeDoorContact: 11,
-			#DeviceTypeBlindsPercentage: 13,
-			#DeviceTypeBlindsVenetianUS: 14,
-			#DeviceTypeBlindsVenetianEU: 15,
-			#DeviceTypeBlindsPercentageInverted: 16,
-			#DeviceTypeMedia: 17, // Only supported as on/off switch at the moment.
-			#DeviceTypeSelector: 18,
-			#DeviceTypeDoorLock: 19,
-			#DeviceTypeDoorLockInverted: 20,
-			lineinput=""
-			if Devices[Unit].SwitchType == 15 :
-				#Venitian blinds EU
-				if assocMode == "1" :
-					lineinput='ZIA++' + str("ASSOC " + protocol + " " + id)
-					Devices[Unit].Update(nValue = 17, sValue="50");
-				else :
-					if Command == "Off":
-						lineinput='ZIA++' + str("ON " + protocol + " " + id )
-						Devices[Unit].Update(nValue =0,sValue="100");
-					elif Command == "On":
-						lineinput='ZIA++' + str("OFF " + protocol + " " + id )
-						Devices[Unit].Update(nValue =1,sValue="0");
-					else :
-						lineinput='ZIA++' + str("DIM " + protocol + " " + id + " %50" )
-						Devices[Unit].Update(nValue = 17, sValue="50");
-			if Devices[Unit].SwitchType == 13 :
-				#Blinds percentage
-				if assocMode == "1" :
-					lineinput='ZIA++' + str("ASSOC " + protocol + " " + id)
-					Devices[Unit].Update(nValue = 17, sValue="50");
-				else :
-					if Command == "Off":
-						lineinput='ZIA++' + str("ON " + protocol + " " + id )
-						Devices[Unit].Update(nValue =0,sValue="100");
-					elif Command == "On":
-						lineinput='ZIA++' + str("OFF " + protocol + " " + id )
-						Devices[Unit].Update(nValue =1,sValue="0");
-					elif Command== "Set Level" :
-						if Level <= 1 :
-							lineinput='ZIA++' + str("ON " + protocol + " " + id )
-							Devices[Unit].Update(nValue = 0, sValue="100");
-						elif Level >= 99 :
-							lineinput='ZIA++' + str("OFF " + protocol + " " + id )
-							Devices[Unit].Update(nValue = 1, sValue="0");
-						else :
-							lineinput='ZIA++' + str("DIM " + protocol + " " + id + " %" + str(Level) )
-							Devices[Unit].Update(nValue = 17, sValue=str(Level));
-						
-			if Devices[Unit].SwitchType == 16 :
-				if assocMode == "1" :
-					lineinput='ZIA++' + str("ASSOC " + protocol + " " + id)
-					Devices[Unit].Update(nValue = 17, sValue="50");
-				else :
-					if Command == "Off":
-						lineinput='ZIA++' + str("ON " + protocol + " " + id )
-						Devices[Unit].Update(nValue =0,sValue="off");
-					elif Command == "On":
-						lineinput='ZIA++' + str("OFF " + protocol + " " + id )
-						Devices[Unit].Update(nValue =1,sValue="on");
-					else :
-						lineinput='ZIA++' + str("DIM " + protocol + " " + id + " %50" )
-						Devices[Unit].Update(nValue = 17, sValue="50");
-			elif Devices[Unit].SwitchType == 18 :
-				qualifier=Devices[Unit].Options['subType']
-				if qualifier=="0":
-				###start MAj from Deennoo
-					if Level == 0 and Command != "On" :
-						lineinput='ZIA++' + str("OFF " + protocol + " ID " + id + " QUALIFIER " + qualifier)
-					if Level == 10 :
-						lineinput='ZIA++' + str("DIM " + protocol + " ID " + id + " %50" + " QUALIFIER " + qualifier)
-					if Level == 20 or Command == "Off" :
-						lineinput='ZIA++' + str("ON " + protocol + " ID " + id + " QUALIFIER " + qualifier)
-					if Level == 30 :
-						lineinput='ZIA++' + str("ASSOC " + protocol + " ID " + id + " QUALIFIER " + qualifier)
-				###End MAj from Deennoo
-				if qualifier=="1":
-					if Level == 10 :
-						lineinput='ZIA++' + str("ON " + protocol + " ID " + id + " QUALIFIER " + qualifier)
-					if Level == 20 :
-						lineinput='ZIA++' + str("OFF " + protocol + " ID " + id + " QUALIFIER " + qualifier)
-					if Level == 30 :
-						lineinput='ZIA++' + str("ASSOC " + protocol + " ID " + id + " QUALIFIER " + qualifier)
-			if lineinput != "" :
-				if Parameters["Mode6"] != "0":
-					Domoticz.Log(lineinput)
+		
+		for line in Devices[Unit].Description.splitlines():
+			if line.find("Options") != -1:
+				line=line.split(":")[1]
+				for Option in line.split(";"):
+					if Parameters["Mode6"] != "0":
+						Domoticz.Log("SendtoRfplayer - Option: " + Option)
+					NameVar=Option.split("=")[0]
+					ValVar=Option.split("=")[1]
+					if NameVar=="id":
+						id=ValVar
+					elif NameVar=="infoType":
+						infoType=ValVar
+					elif NameVar=="protocol":
+						protocol=ValVar
+					elif NameVar=="assocMode":
+						assocMode=ValVar
+		
+		if Parameters["Mode6"] != "0":				
+			Domoticz.Log("SendtoRfplayer - " + id + " | " + infoType + " | " + protocol) 
+		
+		lineinput=""
+		if bErreur == False :
+			if protocol =="1": protocol="X10"
+			if protocol =="2": 
+				frequency=Options['frequency']
+				if frequency == "433920":
+					protocol="VISONIC433"
+				if frequency == "868950":
+					protocol="VISONIC868"
+			if protocol =="3": protocol="BLYSS"
+			if protocol =="4": protocol="CHACON"
+			if protocol =="6": protocol="DOMIA"
+			if protocol =="8" and infoType == "10":
+				frequency=Options['frequency']
+				if frequency == "433920":
+					protocol="X2D433"
+				if frequency == "868950":
+					protocol="X2D868"
+			if protocol =="8" and infoType == "11":
+				protocol="X2DSHUTTER"
+			if protocol =="9": protocol="RTS"
+			if protocol =="10": protocol="KD101"
+			if protocol =="11": protocol="PARROT"
+
+			if infoType == "0" and  protocol == "PARROT":
+				#id=Options['id']
+				lineinput='ZIA++' + str(Command.upper()) + " " + protocol + " " + id
 				SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
-				#Devices[Unit].Update(nValue =0,sValue = str(Level))
-			
-		if infoType == "10" :
-			Area=Options['area']
-			if Level == 0 : # Off
-				lineinput="ZIA++ OFF X2DELEC A"+Area + " %4"
-			if Level == 10 : # HG
-				lineinput="ZIA++ OFF X2DELEC A"+Area + " %5"
-			if Level == 20 : # Eco
-				lineinput="ZIA++ OFF X2DELEC A"+Area + " %0"
-			if Level == 30 : # confort-2
-				lineinput="ZIA++ OFF X2DELEC A"+Area + " %1"
-			if Level == 40 : # confort-1
-				lineinput="ZIA++ OFF X2DELEC A"+Area + " %2"
-			if Level == 50 : # confort
-				lineinput="ZIA++ ON X2DELEC A"+Area + " %3"
-			if Level == 60 : # assoc
-				lineinput="ZIA++ ASSOC X2DELEC A"+Area
-			SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
-			Devices[Unit].Update(nValue =0,sValue = str(Level))
-
-		if infoType == "11" :
-			subType=Options['subType']
-			if subType == "1" :
+				if Command == "On":
+					Devices[Unit].Update(nValue =1,sValue = "on")
+				if Command == "Off":
+					Devices[Unit].Update(nValue =0,sValue = "off")
+					
+			if infoType == "0" and protocol != "PARROT":
+				#id=Options['id']
+				lineinput='ZIA++' + str(Command.upper()) + " " + protocol + " ID " + id
+				SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+				if Command == "On":
+					Devices[Unit].Update(nValue =1,sValue = "on")
+				if Command == "Off":
+					Devices[Unit].Update(nValue =0,sValue = "off")
+					
+			if infoType == "1" or infoType == "2":
 				id=Options['id']
-				if Level == 10 :
-					lineinput='ZIA++' + str("ON " + protocol + " ID " + id )#+ " QUALIFIER " + qualifier)
-				if Level == 20 :
-					lineinput='ZIA++' + str("OFF " + protocol + " ID " + id ) #+ " QUALIFIER " + qualifier)
-				if Level == 30 :
-					lineinput='ZIA++' + str("ASSOC " + protocol + " ID " + id ) #+ " QUALIFIER " + qualifier)
+				lineinput='ZIA++' + str(Command.upper()) + " " + protocol + " ID " + id
+				SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+				if Command == "On":
+					Devices[Unit].Update(nValue =1,sValue = "on")
+				if Command == "Off":
+					Devices[Unit].Update(nValue =0,sValue = "off")
+						#Devices[Unit].Update(nValue =0,sValue = "off")
+				
+			if infoType == "3" :
+				#id=Options['id']			
+				#qualifier=""
+				#DeviceTypeSwitch: 0,
+				#DeviceTypeDoorbell: 1,
+				#DeviceTypeContact: 2,
+				#DeviceTypeBlinds: 3,
+				#DeviceTypeSmoke: 5,
+				#DeviceTypeBlindsInverted: 6,
+				#DeviceTypeDimmer: 7,
+				#DeviceTypeMotion: 8,
+				#DeviceTypePushOn: 9,
+				#DeviceTypeDoorContact: 11,
+				#DeviceTypeBlindsPercentage: 13,
+				#DeviceTypeBlindsVenetianUS: 14,
+				#DeviceTypeBlindsVenetianEU: 15,
+				#DeviceTypeBlindsPercentageInverted: 16,
+				#DeviceTypeMedia: 17, // Only supported as on/off switch at the moment.
+				#DeviceTypeSelector: 18,
+				#DeviceTypeDoorLock: 19,
+				#DeviceTypeDoorLockInverted: 20,
+				lineinput=""
+				if Devices[Unit].SwitchType == 15 :
+					#Venitian blinds EU
+					if assocMode == "1" :
+						lineinput='ZIA++' + str("ASSOC " + protocol + " " + id)
+						Devices[Unit].Update(nValue = 17, sValue="50");
+					else :
+						if Command == "Off":
+							lineinput='ZIA++' + str("ON " + protocol + " " + id )
+							Devices[Unit].Update(nValue =0,sValue="100");
+						elif Command == "On":
+							lineinput='ZIA++' + str("OFF " + protocol + " " + id )
+							Devices[Unit].Update(nValue =1,sValue="0");
+						else :
+							lineinput='ZIA++' + str("DIM " + protocol + " " + id + " %50" )
+							Devices[Unit].Update(nValue = 17, sValue="50");
+				if Devices[Unit].SwitchType == 13 :
+					#Blinds percentage
+					if assocMode == "1" :
+						lineinput='ZIA++' + str("ASSOC " + protocol + " " + id)
+						Devices[Unit].Update(nValue = 17, sValue="50");
+					else :
+						if Command == "Off":
+							lineinput='ZIA++' + str("ON " + protocol + " " + id )
+							Devices[Unit].Update(nValue =0,sValue="100");
+						elif Command == "On":
+							lineinput='ZIA++' + str("OFF " + protocol + " " + id )
+							Devices[Unit].Update(nValue =1,sValue="0");
+						elif Command== "Set Level" :
+							if Level <= 1 :
+								lineinput='ZIA++' + str("ON " + protocol + " " + id )
+								Devices[Unit].Update(nValue = 0, sValue="100");
+							elif Level >= 99 :
+								lineinput='ZIA++' + str("OFF " + protocol + " " + id )
+								Devices[Unit].Update(nValue = 1, sValue="0");
+							else :
+								lineinput='ZIA++' + str("DIM " + protocol + " " + id + " %" + str(Level) )
+								Devices[Unit].Update(nValue = 17, sValue=str(Level));
+							
+				if Devices[Unit].SwitchType == 16 :
+					if assocMode == "1" :
+						lineinput='ZIA++' + str("ASSOC " + protocol + " " + id)
+						Devices[Unit].Update(nValue = 17, sValue="50");
+					else :
+						if Command == "Off":
+							lineinput='ZIA++' + str("ON " + protocol + " " + id )
+							Devices[Unit].Update(nValue =0,sValue="off");
+						elif Command == "On":
+							lineinput='ZIA++' + str("OFF " + protocol + " " + id )
+							Devices[Unit].Update(nValue =1,sValue="on");
+						else :
+							lineinput='ZIA++' + str("DIM " + protocol + " " + id + " %50" )
+							Devices[Unit].Update(nValue = 17, sValue="50");
+				elif Devices[Unit].SwitchType == 18 :
+					qualifier=Devices[Unit].Options['subType']
+					if qualifier=="0":
+					###start MAj from Deennoo
+						if Level == 0 and Command != "On" :
+							lineinput='ZIA++' + str("OFF " + protocol + " ID " + id + " QUALIFIER " + qualifier)
+						if Level == 10 :
+							lineinput='ZIA++' + str("DIM " + protocol + " ID " + id + " %50" + " QUALIFIER " + qualifier)
+						if Level == 20 or Command == "Off" :
+							lineinput='ZIA++' + str("ON " + protocol + " ID " + id + " QUALIFIER " + qualifier)
+						if Level == 30 :
+							lineinput='ZIA++' + str("ASSOC " + protocol + " ID " + id + " QUALIFIER " + qualifier)
+					###End MAj from Deennoo
+					if qualifier=="1":
+						if Level == 10 :
+							lineinput='ZIA++' + str("ON " + protocol + " ID " + id + " QUALIFIER " + qualifier)
+						if Level == 20 :
+							lineinput='ZIA++' + str("OFF " + protocol + " ID " + id + " QUALIFIER " + qualifier)
+						if Level == 30 :
+							lineinput='ZIA++' + str("ASSOC " + protocol + " ID " + id + " QUALIFIER " + qualifier)
+				if lineinput != "" :
+					if Parameters["Mode6"] != "0":
+						Domoticz.Log(lineinput)
+					SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+					#Devices[Unit].Update(nValue =0,sValue = str(Level))
+				
+			if infoType == "10" :
+				Area=Options['area']
+				if Level == 0 : # Off
+					lineinput="ZIA++ OFF X2DELEC A"+Area + " %4"
+				if Level == 10 : # HG
+					lineinput="ZIA++ OFF X2DELEC A"+Area + " %5"
+				if Level == 20 : # Eco
+					lineinput="ZIA++ OFF X2DELEC A"+Area + " %0"
+				if Level == 30 : # confort-2
+					lineinput="ZIA++ OFF X2DELEC A"+Area + " %1"
+				if Level == 40 : # confort-1
+					lineinput="ZIA++ OFF X2DELEC A"+Area + " %2"
+				if Level == 50 : # confort
+					lineinput="ZIA++ ON X2DELEC A"+Area + " %3"
+				if Level == 60 : # assoc
+					lineinput="ZIA++ ASSOC X2DELEC A"+Area
 				SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
 				Devices[Unit].Update(nValue =0,sValue = str(Level))
-	else :
-		Domoticz.Log("Erreur RFPlayer !");
+
+			if infoType == "11" :
+				subType=Options['subType']
+				if subType == "1" :
+					id=Options['id']
+					if Level == 10 :
+						lineinput='ZIA++' + str("ON " + protocol + " ID " + id )#+ " QUALIFIER " + qualifier)
+					if Level == 20 :
+						lineinput='ZIA++' + str("OFF " + protocol + " ID " + id ) #+ " QUALIFIER " + qualifier)
+					if Level == 30 :
+						lineinput='ZIA++' + str("ASSOC " + protocol + " ID " + id ) #+ " QUALIFIER " + qualifier)
+					SerialConn.Send(bytes(lineinput + '\n\r','utf-8'))
+					Devices[Unit].Update(nValue =0,sValue = str(Level))
+		else :
+			Domoticz.Log("Erreur RFPlayer !");
 				
 def FreeUnit() :
 	FreeUnit=""
@@ -830,6 +923,19 @@ def FreeUnit() :
 		FreeUnit=len(Devices)+1
 	Domoticz.Debug("FreeUnit - Free Device Unit find : " + str(x))
 	return FreeUnit
+	
+	
+
+def CheckRFPControl():
+	#########check if devices exist ####################
+	id=255
+
+	########### create device if not find ###############
+	if id not in Devices :
+		Options = {"LevelNames": "OFF|STATUS|PAIR"}
+		Domoticz.Device(Name="RFPlayer - Control", Unit=id, Type=16, Switchtype=18, Options=Options).Create()
+
+
 
 def DecodeInfoType0(DecData, infoType):
 	try :
